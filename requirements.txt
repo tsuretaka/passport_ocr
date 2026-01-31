@@ -1,0 +1,11 @@
+streamlit
+google-cloud-vision
+pandas
+openpyxl
+opencv-python-headless
+Pillow
+streamlit-authenticator
+pyyaml
+bcrypt
+pillow-heif
+XlsxWriter

@@ -1,0 +1,19 @@
+# Exclude virtual environment
+venv/
+.env
+
+# Exclude sensitive credentials
+service_account.json
+auth_config.yaml
+
+# Exclude user data
+data/
+
+# Exclude system files
+.DS_Store
+__pycache__/
+*.pyc
+
+# Exclude IDE settings
+.vscode/
+.idea/
