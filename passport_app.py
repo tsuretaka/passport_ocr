@@ -26,8 +26,31 @@ import bcrypt
 # Page Config
 st.set_page_config(page_title="パスポートOCRシステム", layout="wide")
 
-# --- Authentication Setup ---
 def load_auth_config():
+    # 1. Try Streamlit Secrets (for Cloud)
+    # Streamlit Secrets handles TOML automatically and exposes it as a dict-like object
+    # We expect the structure to match what Authenticator expects.
+    if "credentials" in st.secrets:
+        try:
+            # Deep conversion to dict if necessary, or just return keys
+            # Secrets might be locked, so we convert to a mutable dict for usage
+            config = {
+                'credentials': dict(st.secrets['credentials']),
+                'cookie': dict(st.secrets['cookie']),
+                'preauthorized': dict(st.secrets.get('preauthorized', {'emails': []}))
+            }
+            # Adjust nested 'usernames' dict inside credentials if it's AttrDict
+            if 'usernames' in config['credentials']:
+                config['credentials']['usernames'] = dict(config['credentials']['usernames'])
+                for user, details in config['credentials']['usernames'].items():
+                     config['credentials']['usernames'][user] = dict(details)
+                     
+            return config
+        except Exception as e:
+            st.error(f"Secretsからの設定読み込みエラー: {e}")
+            return None
+
+    # 2. Try Local File (for Local Dev)
     auth_file = "auth_config.yaml"
     if not os.path.exists(auth_file):
         st.error(f"{auth_file} が見つかりません。")
