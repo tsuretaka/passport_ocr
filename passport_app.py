@@ -727,17 +727,38 @@ if config:
                     if st.button("💾 並び替え・編集を保存"):
                         # Save the current state of AgGrid to Session State
                         new_df = pd.DataFrame(updated_df_from_grid)
+                        
+                        # Clean up: Drop potential internal AgGrid columns or Index columns if they became regular columns
+                        # And ensure we reset index to respect the new order absolutely
+                        if "_selectedRowNodeInfo" in new_df.columns:
+                            new_df = new_df.drop(columns=["_selectedRowNodeInfo"])
+                        
+                        # Reset Index to fix order
+                        new_df = new_df.reset_index(drop=True)
+                        
                         st.session_state['manage_df'] = new_df
-                        st.success("現在の並び順と内容を保存しました")
+                        
+                        # Show confirmation of Top 1
+                        if not new_df.empty:
+                            top_name = f"{new_df.iloc[0].get('氏名(姓)','')} {new_df.iloc[0].get('氏名(名)','')}"
+                            st.success(f"保存しました！現在の先頭: {top_name}")
+                        else:
+                            st.success("保存しました（データ空）")
+                            
                         st.rerun()
                 
                 st.markdown("### データ出力")
                 # Excel Download
                 buffer = io.BytesIO()
                 dl_df = st.session_state['manage_df'].copy()
+                
+                # Cleanup for download
                 if "削除対象" in dl_df.columns:
                     dl_df = dl_df.drop(columns=["削除対象"])
-                
+                # Also removing internal aggrid cols just in case
+                if "_selectedRowNodeInfo" in dl_df.columns:
+                    dl_df = dl_df.drop(columns=["_selectedRowNodeInfo"])
+
                 with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
                     dl_df.to_excel(writer, index=False, sheet_name='Passport Data')
                 
@@ -746,7 +767,8 @@ if config:
                     data=buffer.getvalue(),
                     file_name=f"passport_data_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    type="primary"
+                    type="primary",
+                    key=f"dl_btn_{len(dl_df)}_{datetime.now().strftime('%S')}" # Unique key to force re-render
                 )
 
             else:
