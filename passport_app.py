@@ -652,7 +652,7 @@ if config:
                 gb.configure_grid_options(rowDragManaged=True, animateRows=True)
                 gridOptions = gb.build()
 
-                st.markdown("💡 ヒント: 行をドラッグして並び替えることができます。削除したい行はチェックボックスで選択してください。")
+                st.warning("⚠️ 重要: 行をドラッグして並び替えた後は、**必ず任意の行を1回クリック（またはチェックボックスをON/OFF）** してください。\nこれを行わないと、新しい並び順がシステムに認識されません（仕様上の制限です）。\n下の「現在のシステム認識順序」が変わったことを確認してから保存してください。")
 
                 # Ensure we capture ANY change including row movement if possible (Row Dragging is tricky in Streamlit-AgGrid)
                 # But 'MODEL_CHANGED' should cover it. We will try to monitor selection too just in case.
