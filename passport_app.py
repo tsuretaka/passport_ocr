@@ -503,17 +503,24 @@ if config:
                         # Use direct module access ensuring we get the latest
                         import ocr_utils
                         
-                        # Use the new utility from ocr_utils if available, or define local
-                        if hasattr(ocr_utils, 'normalize_text'):
-                            norm_func = ocr_utils.normalize_text
-                        else:
-                            import unicodedata
-                            def norm_func(t): return unicodedata.normalize('NFKC', str(t)).strip() if t else t
+                        # Ensure we use a fresh normalization logic locally to avoid module cache issues
+                        import unicodedata
+                        import re
+
+                        def force_normalize(text):
+                            if not text or pd.isna(text): return text
+                            text_str = str(text)
+                            # 1. NFKC normalization: Full-width -> Half-width (Ｋ -> K)
+                            norm = unicodedata.normalize('NFKC', text_str)
+                            # 2. Remove ALL whitespace (including full-width space)
+                            # "K A N A T A" -> "KANATA", "Ｋ Ａ Ｎ Ａ Ｔ Ａ" -> "KANATA"
+                            norm = re.sub(r'\s+', '', norm)
+                            return norm
 
                         def clean_domicile(val):
                             if not val or pd.isna(val): return val
-                            # First normalize full-width
-                            val = norm_func(val)
+                            # Normalize first
+                            val = force_normalize(val)
                             
                             val_str = str(val).upper()
                             
@@ -522,7 +529,7 @@ if config:
                                 for pref in ocr_utils.JAPAN_PREFECTURES:
                                     if pref in val_str:
                                         return pref
-                            return val # Return original if no prefecture found
+                            return val # Return normalized if no prefecture found
                         
                         # Check diff
                         for index, row in df_clean.iterrows():
@@ -544,7 +551,8 @@ if config:
                                 if col in row:
                                     orig_val = row[col]
                                     if orig_val and not pd.isna(orig_val):
-                                        new_val = norm_func(orig_val)
+                                        # Use force_normalize!
+                                        new_val = force_normalize(orig_val)
                                         if orig_val != new_val:
                                             df_clean.at[index, col] = new_val
                                             row_changed = True
