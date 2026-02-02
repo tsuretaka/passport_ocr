@@ -12,3 +12,4 @@ XlsxWriter
 pdf2image
 opencv-python-headless
 numpy
+streamlit-aggrid
