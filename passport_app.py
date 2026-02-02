@@ -237,7 +237,7 @@ if config:
                             if response.error.message:
                                 st.error(f"Error: {response.error.message}")
                             else:
-                            else:
+
                                 passport_data = ocr_utils.parse_response(response)
                                 
                                 # FORCE NORMALIZE LOCALLY (To fix K A N A T A issue)
