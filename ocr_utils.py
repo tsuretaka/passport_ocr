@@ -100,8 +100,11 @@ def parse_response(response):
 def normalize_text(text):
     if not text: return text
     # NFKC normalization converts full-width chars (ＫＡＮＡＴＡ) to half-width (KANATA)
-    # Also strips whitespace
-    return unicodedata.normalize('NFKC', str(text)).strip()
+    # Also strips whitespace.
+    # ADDITIONALLY: Remove ALL internal spaces to fix "K A N A T A" -> "KANATA"
+    # This assumes standard Japanese passport fields usually don't have spaces within a single field (Surname/Given Name).
+    normalized = unicodedata.normalize('NFKC', str(text)).strip()
+    return normalized.replace(' ', '')
 
 
 def merge_val(v1, v2, default=""):
