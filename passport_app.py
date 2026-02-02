@@ -16,6 +16,8 @@ import pandas as pd
 # Register HEIC opener
 pillow_heif.register_heif_opener()
 
+from pdf2image import convert_from_bytes
+
 # Custom modules
 import ocr_utils
 importlib.reload(ocr_utils)
@@ -193,20 +195,28 @@ if config:
         with tab1:
             st.header("1枚ずつ読み取り・登録")
             
-            uploaded_file = st.file_uploader("パスポート画像をアップロード", type=['png', 'jpg', 'jpeg', 'heic'], key='single_uploader')
+            uploaded_file = st.file_uploader("パスポート画像をアップロード", type=['png', 'jpg', 'jpeg', 'heic', 'pdf'], key='single_uploader')
             
             if uploaded_file:
-                # Handle HEIC or standard image
+                # Handle HEIC or standard image or PDF
                 try:
                     if uploaded_file.name.lower().endswith('.heic'):
-                        # Streamlit uploader gives bytesIO, Pillow can open it if registered
                         image = Image.open(uploaded_file)
+                    elif uploaded_file.name.lower().endswith('.pdf'):
+                        # Convert PDF first page to image
+                        pages = convert_from_bytes(uploaded_file.read())
+                        if pages:
+                            image = pages[0]
+                        else:
+                            st.error("PDFページが見つかりませんでした。")
+                            image = None
                     else:
                         image = Image.open(uploaded_file)
                         
-                    st.image(image, caption="アップロード画像", use_container_width=True)
+                    if image:
+                        st.image(image, caption="アップロード画像", use_container_width=True)
                 except Exception as e:
-                    st.error(f"画像を開けませんでした: {e}")
+                    st.error(f"ファイルを開けませんでした: {e}")
                     image = None
                 
                 if image and st.button("OCR解析開始", key='btn_single_ocr'):
@@ -333,7 +343,7 @@ if config:
             st.header("複数ファイル一括読み取り")
             st.info("複数のパスポート画像をまとめてアップロードし、一気にリストへ追加します。")
             
-            uploaded_files = st.file_uploader("画像をドラッグ＆ドロップ (複数可)", type=['png', 'jpg', 'jpeg', 'heic'], accept_multiple_files=True, key='batch_uploader')
+            uploaded_files = st.file_uploader("画像をドラッグ＆ドロップ (複数可)", type=['png', 'jpg', 'jpeg', 'heic', 'pdf'], accept_multiple_files=True, key='batch_uploader')
             
             if uploaded_files:
                 st.write(f"選択済みファイル: {len(uploaded_files)} 件")
@@ -357,6 +367,15 @@ if config:
                                 # Open Image from memory
                                 if file.name.lower().endswith('.heic'):
                                     image = Image.open(file)
+                                elif file.name.lower().endswith('.pdf'):
+                                    # For batch, we only take the 1st page of PDF for now (Standard passport PDF scan)
+                                    # If user needs multi-page OCR from one PDF, logic needs to be loop based.
+                                    # Assuming 1 PDF = 1 Page Passport
+                                    pages = convert_from_bytes(file.read())
+                                    if pages: image = pages[0]
+                                    else: 
+                                        st.error(f"{file.name}: PDF page empty")
+                                        continue
                                 else:
                                     image = Image.open(file)
 

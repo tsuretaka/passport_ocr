@@ -9,3 +9,4 @@ pyyaml
 bcrypt
 pillow-heif
 XlsxWriter
+pdf2image
