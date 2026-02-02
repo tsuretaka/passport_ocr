@@ -240,18 +240,30 @@ if config:
 
                                 passport_data = ocr_utils.parse_response(response)
                                 
-                                # FORCE NORMALIZE LOCALLY (To fix K A N A T A issue)
+                                # FORCE NORMALIZE LOCALLY (Aggressive Whitelist)
                                 import unicodedata
                                 import re
-                                def local_normalize(val):
+                                def aggressive_normalize(val, allow_slash=False):
                                     if not val: return val
-                                    # NFKC + Remove Spaces
-                                    s = unicodedata.normalize('NFKC', str(val))
-                                    return re.sub(r'\s+', '', s)
+                                    s = str(val)
+                                    # 1. NFKC (Full-width -> Half-width)
+                                    s = unicodedata.normalize('NFKC', s)
+                                    s = s.upper()
+                                    # 2. Whitelist filtering
+                                    if allow_slash:
+                                        # For dates: Allow A-Z, 0-9, and /
+                                        s = re.sub(r'[^A-Z0-9/]', '', s)
+                                    else:
+                                        # For names/IDs: Allow A-Z, 0-9 ONLY. Kills all spaces/symbols.
+                                        s = re.sub(r'[^A-Z0-9]', '', s)
+                                    return s
                                 
-                                for k, v in passport_data.items():
-                                    if isinstance(v, str):
-                                        passport_data[k] = local_normalize(v)
+                                # Apply to specific keys
+                                for k in ['passport_no', 'surname', 'given_name', 'sex', 'nationality', 'domicile']:
+                                    passport_data[k] = aggressive_normalize(passport_data.get(k), allow_slash=False)
+                                
+                                for k in ['birth_date', 'issue_date', 'expiry_date']:
+                                    passport_data[k] = aggressive_normalize(passport_data.get(k), allow_slash=True)
                                 
                                 st.session_state['current_mrz_data'] = passport_data
                                 st.success("解析完了")
@@ -411,17 +423,25 @@ if config:
                                 # Parse
                                 p_data = ocr_utils.parse_response(response)
                                 
-                                # FORCE NORMALIZE LOCALLY
+                                # FORCE NORMALIZE LOCALLY (Aggressive Whitelist)
                                 import unicodedata
                                 import re
-                                def local_normalize(val):
+                                def aggressive_normalize(val, allow_slash=False):
                                     if not val: return val
-                                    s = unicodedata.normalize('NFKC', str(val))
-                                    return re.sub(r'\s+', '', s)
+                                    s = str(val)
+                                    s = unicodedata.normalize('NFKC', s)
+                                    s = s.upper()
+                                    if allow_slash:
+                                        s = re.sub(r'[^A-Z0-9/]', '', s)
+                                    else:
+                                        s = re.sub(r'[^A-Z0-9]', '', s)
+                                    return s
 
-                                for k, v in p_data.items():
-                                    if isinstance(v, str):
-                                        p_data[k] = local_normalize(v)
+                                for k in ['passport_no', 'surname', 'given_name', 'sex', 'nationality', 'domicile']:
+                                    p_data[k] = aggressive_normalize(p_data.get(k), allow_slash=False)
+                                
+                                for k in ['birth_date', 'issue_date', 'expiry_date']:
+                                    p_data[k] = aggressive_normalize(p_data.get(k), allow_slash=True)
                                 
                                 # Create Row Data
                                 row = {
@@ -530,33 +550,31 @@ if config:
                         # Use direct module access ensuring we get the latest
                         import ocr_utils
                         
-                        # Ensure we use a fresh normalization logic locally to avoid module cache issues
+                        # Ensure we use a fresh normalization logic locally
                         import unicodedata
                         import re
 
-                        def force_normalize(text):
-                            if not text or pd.isna(text): return text
-                            text_str = str(text)
-                            # 1. NFKC normalization: Full-width -> Half-width (Ｋ -> K)
-                            norm = unicodedata.normalize('NFKC', text_str)
-                            # 2. Remove ALL whitespace (including full-width space)
-                            # "K A N A T A" -> "KANATA", "Ｋ Ａ Ｎ Ａ Ｔ Ａ" -> "KANATA"
-                            norm = re.sub(r'\s+', '', norm)
-                            return norm
+                        def aggressive_normalize(val, allow_slash=False):
+                            if not val or pd.isna(val): return val
+                            s = str(val)
+                            s = unicodedata.normalize('NFKC', s)
+                            s = s.upper()
+                            if allow_slash:
+                                s = re.sub(r'[^A-Z0-9/]', '', s)
+                            else:
+                                s = re.sub(r'[^A-Z0-9]', '', s)
+                            return s
 
                         def clean_domicile(val):
                             if not val or pd.isna(val): return val
-                            # Normalize first
-                            val = force_normalize(val)
-                            
-                            val_str = str(val).upper()
-                            
-                            # 1. Check against Prefecture List
+                            # Normalize
+                            val = aggressive_normalize(val, allow_slash=False)
+                            # Check Prefectures
                             if hasattr(ocr_utils, 'JAPAN_PREFECTURES'):
                                 for pref in ocr_utils.JAPAN_PREFECTURES:
-                                    if pref in val_str:
+                                    if pref in val:
                                         return pref
-                            return val # Return normalized if no prefecture found
+                            return val
                         
                         # Check diff
                         for index, row in df_clean.iterrows():
@@ -564,25 +582,30 @@ if config:
                             orig_dom = row['本籍']
                             cleaned_dom = clean_domicile(orig_dom)
                             
-                            # Fix other text fields (Name, Passport No, etc) - Normalization only
-                            # List of columns to normalize
-                            target_cols = ["旅券番号", "氏名(姓)", "氏名(名)", "生年月日", "性別", "国籍", "発行年月日", "有効期間満了日"]
-                            
                             row_changed = False
                             
                             if orig_dom != cleaned_dom:
                                 df_clean.at[index, '本籍'] = cleaned_dom
                                 row_changed = True
-                                
-                            for col in target_cols:
+                            
+                            # Fix other columns with aggressive whitelist
+                            # No slash allowed:
+                            for col in ["旅券番号", "氏名(姓)", "氏名(名)", "性別", "国籍"]:
                                 if col in row:
-                                    orig_val = row[col]
-                                    if orig_val and not pd.isna(orig_val):
-                                        # Use force_normalize!
-                                        new_val = force_normalize(orig_val)
-                                        if orig_val != new_val:
-                                            df_clean.at[index, col] = new_val
-                                            row_changed = True
+                                    orig = row[col]
+                                    new_val = aggressive_normalize(orig, allow_slash=False)
+                                    if orig != new_val:
+                                        df_clean.at[index, col] = new_val
+                                        row_changed = True
+                            
+                            # Slash allowed (Dates):
+                            for col in ["生年月日", "発行年月日", "有効期間満了日"]:
+                                if col in row:
+                                    orig = row[col]
+                                    new_val = aggressive_normalize(orig, allow_slash=True)
+                                    if orig != new_val:
+                                        df_clean.at[index, col] = new_val
+                                        row_changed = True
                             
                             if row_changed:
                                 count_fixed += 1
@@ -593,11 +616,8 @@ if config:
                         if "data_editor_mem" in st.session_state:
                             del st.session_state["data_editor_mem"]
                             
-                        # Double check normalization
-                        # st.write("Debug Cleaned:", df_clean.head())
-                            
                         if count_fixed > 0:
-                            st.success(f"{count_fixed} 件のデータを補正しました！")
+                            st.success(f"{count_fixed} 件のデータを強力補正しました（英数字以外を削除）！")
                             st.rerun()
                         else:
                             st.info("補正が必要なデータは見つかりませんでした（すべて正常か、マッチしませんでした）。")
