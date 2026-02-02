@@ -685,88 +685,106 @@ if config:
                 if not isinstance(updated_df_from_grid, pd.DataFrame):
                     updated_df_from_grid = pd.DataFrame(updated_df_from_grid)
 
-                # Check if data changed (reorder or edit)
-                # To avoid infinite loops, we can use a button to "Commit" changes if needed.
-                # Or simply update session state if explicitly requested.
-                # However, drag & drop updates 'data'.
+                # Automatic Sync Logic (No manual Save button needed)
+                # If the data returned from AgGrid is different from the current session state, update immediately.
                 
+                # Check if we have valid data back
+                if not updated_df_from_grid.empty:
+                    # To compare, we need to be careful about types and index.
+                    # Let's perform a lightweight check: if the list of passport numbers in order is different.
+                    
+                    current_passport_order = df_current['旅券番号'].tolist() if '旅券番号' in df_current.columns else []
+                    new_passport_order = updated_df_from_grid['旅券番号'].tolist() if '旅券番号' in updated_df_from_grid.columns else []
+                    
+                    # Also check content changes (for edits)
+                    # Simple approach: If user interacted (which triggered this rerun), trust the grid data.
+                    # But we need to distinguish between "Initial Load" and "User Change".
+                    # updated_df_from_grid is initially same as df_current.
+                    
+                    # We can assume if selected_rows changed or if we detect value diffs.
+                    # But easiest is: If the serialized data differs, update.
+                    
+                    # Clean up Grid data for comparison/saving
+                    clean_new_df = updated_df_from_grid.copy()
+                    if "_selectedRowNodeInfo" in clean_new_df.columns:
+                        clean_new_df = clean_new_df.drop(columns=["_selectedRowNodeInfo"])
+                    clean_new_df = clean_new_df.reset_index(drop=True)
+
+                    # Compare with current state (df_current) - reset index for comparison too
+                    df_current_reset = df_current.reset_index(drop=True)
+                    
+                    # Check if actually changed. We use .equals() but it can be strict.
+                    # Let's check 2 things: Order of Passport No, and Values.
+                    
+                    has_changed = False
+                    
+                    # 1. Order Check
+                    if current_passport_order != new_passport_order:
+                        has_changed = True
+                    
+                    # 2. Content Check (if order is same, maybe values changed)
+                    if not has_changed:
+                        # Drop compare artifacts
+                        c1 = df_current_reset.drop(columns=['削除対象'], errors='ignore')
+                        c2 = clean_new_df.drop(columns=['削除対象'], errors='ignore')
+                        # Align columns
+                        c2 = c2[c1.columns] 
+                        if not c1.equals(c2):
+                            has_changed = True
+
+                    if has_changed:
+                        st.session_state['manage_df'] = clean_new_df
+                        st.toast("✅ データが更新されました（並び替え・編集）")
+                        # Force Rerun to update the Grid with new clean data and prevent regression
+                        st.rerun()
+
                 col_btn1, col_btn2 = st.columns(2)
                 
                 with col_btn1:
                     if st.button("🗑️ 選択行を削除"):
-                         # ... (Delete logic same as before)
+                         # Remove from memory
                         if selected:
-                            # Convert selected to dataframe or list of IDs
-                            # Since we don't have a unique ID guaranteed, we might rely on index or content.
-                            # AgGrid returns selected rows as list of dicts.
-                            
-                            # Filter out selected rows from updated_df_from_grid
-                            # Robust way: Use original DF and drop by index?
-                            # But index changes with drag and drop.
-                            # Best way: Filter updated_df_from_grid where row is not in selected.
-                            
-                            # Create a clean DF from AgGrid result
-                            current_grid_df = pd.DataFrame(updated_df_from_grid)
-                            
-                            # Handle removal
-                            # We can iterate and remove.
-                            # Or simpler: Re-construct DF excluding selected.
-                            
-                            # Identify rows to delete.
-                            # We can just exclude rows that match the selected dicts.
-                            # Ideally we should have a unique ID. '画像ファイル名' + '旅券番号' might be unique enough?
-                            # Or just use the exact content match.
-                            
-                            # Remove selected rows
-                            # Convert selected to list of dicts (already is)
-                            
-                            # Remove logic:
+                             # ... (Delete logic)
+                             pass 
+                        # (Reuse existing delete logic below, simplified)
+                        
+                        if selected:
                             try:
-                                # Convert to list of dicts for comparison
-                                current_records = current_grid_df.to_dict('records')
-                                # Remove items present in selected
-                                # Note: 'selected' might contain extra metadata like _selectedRowNodeInfo
+                                # Convert to list of dicts logic again
+                                current_records = clean_new_df.to_dict('records') # Use clean_new_df (latest)
                                 clean_selected = [{k:v for k,v in s.items() if k != '_selectedRowNodeInfo'} for s in selected]
                                 
-                                new_records = [r for r in current_records if r not in clean_selected]
-                                new_df = pd.DataFrame(new_records)
+                                # Filter
+                                # We need a reliable way to remove. 
+                                # Since we have updated session state, we can just remove from valid list.
+                                # But we need to identify WHICH rows.
                                 
-                                st.session_state['manage_df'] = new_df
+                                # Let's use index if possible, but index changes.
+                                # Using Passport No + Name as pseudo key?
+                                # Let's try removing exact matches from records.
+                                
+                                final_records = []
+                                for r in current_records:
+                                    is_selected = False
+                                    for s in clean_selected:
+                                        # Compare key fields
+                                        if r.get('旅券番号') == s.get('旅券番号') and r.get('氏名(姓)') == s.get('氏名(姓)'):
+                                            is_selected = True
+                                            break
+                                    if not is_selected:
+                                        final_records.append(r)
+                                
+                                st.session_state['manage_df'] = pd.DataFrame(final_records)
                                 st.success(f"{len(clean_selected)} 件削除しました")
                                 st.rerun()
                                 
                             except Exception as e:
                                 st.error(f"削除エラー: {e}")
-                            
                         else:
                             st.warning("削除する行を選択してください")
 
-                with col_btn2:
-                    if st.button("💾 並び替え・編集を保存"):
-                        # Save the current state of AgGrid to Session State
-                        new_df = updated_df_from_grid.copy()
-                        
-                        # Clean up: Drop potential internal AgGrid columns or Index columns if they became regular columns
-                        # And ensure we reset index to respect the new order absolutely
-                        if "_selectedRowNodeInfo" in new_df.columns:
-                            new_df = new_df.drop(columns=["_selectedRowNodeInfo"])
-                        
-                        # Reset Index to fix order
-                        new_df = new_df.reset_index(drop=True)
-                        
-                        st.session_state['manage_df'] = new_df
-                        
-                        # Show confirmation of Top 1
-                        if not new_df.empty:
-                            top_name = f"{new_df.iloc[0].get('氏名(姓)','')} {new_df.iloc[0].get('氏名(名)','')}"
-                            st.success(f"保存しました！\n現在の先頭データ: {top_name}")
-                        else:
-                            st.success("保存しました（データ空）")
-                            
-                        st.rerun()
-                
-                # Show current order preview (helpful for debugging)
-                st.caption(f"現在のシステム認識順序（Save前）: {', '.join(top_names_preview)} ...")
+                # Show current order preview
+                st.caption(f"現在のデータ順序: {', '.join(top_names_preview)} ...")
 
                 st.markdown("### データ出力")
                 # Excel Download
