@@ -88,18 +88,18 @@ def parse_response(response):
     # We change strategy to Prefer MRZ for core fields.
     
     data = {
-        # Prefer MRZ
-        "passport_no": normalize_text(merge_val(mrz_data.get('passport_no'), viz_data.get('passport_no'))),
+        # Prefer VIZ (High reliability for clear fonts, avoids MRZ shift errors)
+        "passport_no": normalize_text(merge_val(viz_data.get('passport_no'), mrz_data.get('passport_no'))),
+        "birth_date": normalize_text(merge_val(viz_data.get('birth_date'), mrz_data.get('birth_date'))),
+        "expiry_date": normalize_text(merge_val(viz_data.get('expiry_date'), mrz_data.get('expiry_date'))),
+        "issue_date": normalize_text(merge_val(viz_data.get('issue_date'), mrz_data.get('issue_date'))),
+        "sex": normalize_text(merge_val(viz_data.get('sex'), mrz_data.get('sex'))),
+        "nationality": normalize_text(merge_val(viz_data.get('nationality'), mrz_data.get('nationality'), default="JPN")),
+        "domicile": normalize_text(merge_val(viz_data.get('domicile'), mrz_data.get('domicile'))),
+
+        # Prefer MRZ (Better for names to avoid visual noise/spacing issues e.g. "K A N A T A")
         "surname": normalize_text(merge_val(mrz_data.get('surname'), viz_data.get('surname'))),
         "given_name": normalize_text(merge_val(mrz_data.get('given_name'), viz_data.get('given_name'))),
-        "birth_date": normalize_text(merge_val(mrz_data.get('birth_date'), viz_data.get('birth_date'))),
-        "expiry_date": normalize_text(merge_val(mrz_data.get('expiry_date'), viz_data.get('expiry_date'))),
-        "sex": normalize_text(merge_val(mrz_data.get('sex'), viz_data.get('sex'))),
-        "nationality": normalize_text(merge_val(mrz_data.get('nationality'), viz_data.get('nationality'), default="JPN")),
-        "issue_date": normalize_text(merge_val(mrz_data.get('issue_date'), viz_data.get('issue_date'))), # Added Issue Date
-        
-        # Prefer VIZ (or VIZ only)
-        "domicile": normalize_text(merge_val(viz_data.get('domicile'), mrz_data.get('domicile'))), # Domicile is VIZ heavy
         
         "raw_mrz": mrz_data.get('raw_mrz', "")
     }
