@@ -23,7 +23,9 @@ import ocr_utils
 importlib.reload(ocr_utils)
 import excel_utils
 importlib.reload(excel_utils)
+importlib.reload(excel_utils)
 import bcrypt
+from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode, DataReturnMode, JsCode
 
 # Page Config
 st.set_page_config(page_title="パスポートOCRシステム", layout="wide")
@@ -630,45 +632,103 @@ if config:
             df_current = st.session_state['manage_df']
             
             if not df_current.empty:
-                if "削除対象" not in df_current.columns:
-                    df_current.insert(0, "削除対象", False)
+                # AgGrid Implementation for Drag & Drop
+                from st_aggrid import AgGrid, GridOptionsBuilder
 
-                # Bulk Select
-                b1, b2, b3 = st.columns([1, 1, 4])
-                with b1: 
-                    if st.button("☑️ 全選択"):
-                        df_current["削除対象"] = True
-                        st.session_state['manage_df'] = df_current
-                        st.rerun()
-                with b2:
-                    if st.button("☐ 全解除"):
-                        df_current["削除対象"] = False
-                        st.session_state['manage_df'] = df_current
-                        st.rerun()
-
-                edited_df = st.data_editor(
-                    df_current,
-                    key="data_editor_mem",
-                    num_rows="fixed",
-                    use_container_width=True,
-                    column_config={"削除対象": st.column_config.CheckboxColumn("削除", default=False)},
-                    disabled=["登録日時", "画像ファイル名"]
-                )
+                gb = GridOptionsBuilder.from_dataframe(df_current)
+                # Enable selection
+                gb.configure_selection('multiple', use_checkbox=True, groupSelectsChildren=True)
+                # Enable editing
+                gb.configure_default_column(editable=True, groupable=True)
+                # Enable Row Dragging on the first column (or specific column)
+                # We add drag handle to '旅券番号' or create an index col
+                # Let's add drag handle to "旅券番号"
+                gb.configure_column("旅券番号", rowDrag=True)
                 
-                c1, c2 = st.columns(2)
-                with c1:
+                # Dynamic height based on rows
+                grid_height = 400
+                if len(df_current) > 10: grid_height = 600
+                
+                gb.configure_grid_options(rowDragManaged=True, animateRows=True)
+                gridOptions = gb.build()
+
+                st.markdown("💡 ヒント: 行をドラッグして並び替えることができます。削除したい行はチェックボックスで選択してください。")
+
+                grid_response = AgGrid(
+                    df_current,
+                    gridOptions=gridOptions,
+                    height=grid_height, 
+                    width='100%',
+                    data_return_mode=DataReturnMode.FILTERED_AND_SORTED, 
+                    update_mode=GridUpdateMode.MODEL_CHANGED,
+                    fit_columns_on_grid_load=False,
+                    allow_unsafe_jscode=True # Needed for some advanced features if used
+                )
+
+                selected = grid_response['selected_rows']
+                updated_df_from_grid = grid_response['data']
+                
+                # Check if data changed (reorder or edit)
+                # To avoid infinite loops, we can use a button to "Commit" changes if needed.
+                # Or simply update session state if explicitly requested.
+                # However, drag & drop updates 'data'.
+                
+                col_btn1, col_btn2 = st.columns(2)
+                
+                with col_btn1:
                     if st.button("🗑️ 選択行を削除"):
-                         # Remove from memory
-                        new_df = edited_df[edited_df["削除対象"] == False].drop(columns=["削除対象"], errors='ignore')
+                        if selected:
+                            # Convert selected to dataframe or list of IDs
+                            # Since we don't have a unique ID guaranteed, we might rely on index or content.
+                            # AgGrid returns selected rows as list of dicts.
+                            
+                            # Filter out selected rows from updated_df_from_grid
+                            # Robust way: Use original DF and drop by index?
+                            # But index changes with drag and drop.
+                            # Best way: Filter updated_df_from_grid where row is not in selected.
+                            
+                            # Create a clean DF from AgGrid result
+                            current_grid_df = pd.DataFrame(updated_df_from_grid)
+                            
+                            # Handle removal
+                            # We can iterate and remove.
+                            # Or simpler: Re-construct DF excluding selected.
+                            
+                            # Identify rows to delete.
+                            # We can just exclude rows that match the selected dicts.
+                            # Ideally we should have a unique ID. '画像ファイル名' + '旅券番号' might be unique enough?
+                            # Or just use the exact content match.
+                            
+                            # Remove selected rows
+                            # Convert selected to list of dicts (already is)
+                            
+                            # Remove logic:
+                            try:
+                                # Convert to list of dicts for comparison
+                                current_records = current_grid_df.to_dict('records')
+                                # Remove items present in selected
+                                # Note: 'selected' might contain extra metadata like _selectedRowNodeInfo
+                                clean_selected = [{k:v for k,v in s.items() if k != '_selectedRowNodeInfo'} for s in selected]
+                                
+                                new_records = [r for r in current_records if r not in clean_selected]
+                                new_df = pd.DataFrame(new_records)
+                                
+                                st.session_state['manage_df'] = new_df
+                                st.success(f"{len(clean_selected)} 件削除しました")
+                                st.rerun()
+                                
+                            except Exception as e:
+                                st.error(f"削除エラー: {e}")
+                            
+                        else:
+                            st.warning("削除する行を選択してください")
+
+                with col_btn2:
+                    if st.button("💾 並び替え・編集を保存"):
+                        # Save the current state of AgGrid to Session State
+                        new_df = pd.DataFrame(updated_df_from_grid)
                         st.session_state['manage_df'] = new_df
-                        st.success("削除しました")
-                        st.rerun()
-                with c2:
-                    if st.button("💾 編集を確定"):
-                        # Just update memory state from editor
-                        final = edited_df.drop(columns=["削除対象"], errors='ignore')
-                        st.session_state['manage_df'] = final
-                        st.success("編集内容を確定しました")
+                        st.success("現在の並び順と内容を保存しました")
                         st.rerun()
                 
                 st.markdown("### データ出力")
