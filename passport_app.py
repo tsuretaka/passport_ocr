@@ -566,6 +566,9 @@ if config:
                         if "data_editor_mem" in st.session_state:
                             del st.session_state["data_editor_mem"]
                             
+                        # Double check normalization
+                        # st.write("Debug Cleaned:", df_clean.head())
+                            
                         if count_fixed > 0:
                             st.success(f"{count_fixed} 件のデータを補正しました！")
                             st.rerun()
