@@ -482,9 +482,56 @@ if config:
                 else:
                     st.success("🎉 全員OKです！")
 
+            # --- 2. Data Cleaning Section (New) ---
+            st.markdown("### 🧹 データ補正")
+            with st.expander("データのクレンジング（本籍の修正など）", expanded=False):
+                st.info("「本籍」列に含まれる余計な文字（Sex, of など）を除去し、都道府県名のみに統一します。")
+                if st.button("✨ 本籍データを一括補正する"):
+                    if not st.session_state['manage_df'].empty:
+                        df_clean = st.session_state['manage_df'].copy()
+                        
+                        count_fixed = 0
+                        
+                        # Apply Cleaning using the same logic as ocr_utils
+                        # Use direct module access ensuring we get the latest
+                        import ocr_utils
+                        
+                        def clean_domicile(val):
+                            if not val or pd.isna(val): return val
+                            val_str = str(val).upper()
+                            
+                            # 1. Check against Prefecture List
+                            if hasattr(ocr_utils, 'JAPAN_PREFECTURES'):
+                                for pref in ocr_utils.JAPAN_PREFECTURES:
+                                    if pref in val_str:
+                                        return pref
+                            return val # Return original if no prefecture found
+                        
+                        # Check diff
+                        for index, row in df_clean.iterrows():
+                            original = row['本籍']
+                            cleaned = clean_domicile(original)
+                            if original != cleaned:
+                                df_clean.at[index, '本籍'] = cleaned
+                                count_fixed += 1
+                        
+                        st.session_state['manage_df'] = df_clean
+                        
+                        # IMPORTANT: Clear data_editor state to force refresh
+                        if "data_editor_mem" in st.session_state:
+                            del st.session_state["data_editor_mem"]
+                            
+                        if count_fixed > 0:
+                            st.success(f"{count_fixed} 件のデータを補正しました！")
+                            st.rerun()
+                        else:
+                            st.info("補正が必要なデータは見つかりませんでした（すべて正常か、マッチしませんでした）。")
+                    else:
+                        st.warning("データが空です。")
+
             st.markdown("---")
 
-            # --- 2. Data Editor Section ---
+            # --- 3. Data Editor Section ---
             df_current = st.session_state['manage_df']
             
             if not df_current.empty:

@@ -17,3 +17,4 @@ __pycache__/
 # Exclude IDE settings
 .vscode/
 .idea/
+secrets_for_deployment.toml

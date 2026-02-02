@@ -7,6 +7,17 @@ month_map = {
     "JUL": "07", "AUG": "08", "SEP": "09", "OCT": "10", "NOV": "11", "DEC": "12"
 }
 
+# 日本の都道府県リスト（ローマ字・ヘボン式）
+JAPAN_PREFECTURES = {
+    "HOKKAIDO", "AOMORI", "IWATE", "MIYAGI", "AKITA", "YAMAGATA", "FUKUSHIMA",
+    "IBARAKI", "TOCHIGI", "GUNMA", "SAITAMA", "CHIBA", "TOKYO", "KANAGAWA",
+    "NIIGATA", "TOYAMA", "ISHIKAWA", "FUKUI", "YAMANASHI", "NAGANO", "GIFU",
+    "SHIZUOKA", "AICHI", "MIE", "SHIGA", "KYOTO", "OSAKA", "HYOGO", "NARA", "WAKAYAMA",
+    "TOTTORI", "SHIMANE", "OKAYAMA", "HIROSHIMA", "YAMAGUCHI",
+    "TOKUSHIMA", "KAGAWA", "EHIME", "KOCHI",
+    "FUKUOKA", "SAGA", "NAGASAKI", "KUMAMOTO", "OITA", "MIYAZAKI", "KAGOSHIMA", "OKINAWA"
+}
+
 def parse_response(response):
     """
     Google Vision APIのレスポンスオブジェクトを受け取り、
@@ -193,21 +204,34 @@ def parse_viz_layout(annotations, full_text=""):
                     data[key] = "JPN"
             
             elif key == 'domicile':
-                 # Remove asterisks and other noise
-                 clean_val = re.sub(r'[\*0-9<:;,\.]', '', combined_text).strip()
-                 
-                 # NEW: If we picked up Japanese label "発行" or "年月日" accidentally, cut it off.
-                 # Stop specifically at Japanese chars often found next to domicile
-                 m_jp = re.search(r'[発行年月日]', clean_val)
-                 if m_jp:
-                     clean_val = clean_val[:m_jp.start()].strip()
+                # -----------------------------------------------------------
+                # 都道府県ホワイトリストによる照合（Validation & Sanitization）
+                # -----------------------------------------------------------
+                found_pref = None
+                upper_text = combined_text.upper()
+                
+                # 1. 完全一致検索（ノイズの中に都道府県名が含まれているか）
+                # 例: "Sex OKINAWA of 所持" -> "OKINAWA"
+                for pref in JAPAN_PREFECTURES:
+                    if pref in upper_text:
+                        found_pref = pref
+                        break
+                
+                if found_pref:
+                    data[key] = found_pref
+                else:
+                    # 見つからない場合は従来のクリーニングロジックで頑張る
+                    # （OCRミスで "T0KYO" となっている場合などへの最低限の対応）
+                    clean_val = re.sub(r'[\*0-9<:;,\.]', '', combined_text).strip()
+                    
+                    # 日本語ラベルの除去
+                    m_jp = re.search(r'[発行年月日]', clean_val)
+                    if m_jp:
+                        clean_val = clean_val[:m_jp.start()].strip()
 
-                 # Remove trailing single chars which are likely noise or truncated labels
-                 # e.g. "OKINAWA F" -> "OKINAWA"
-                 # Only keep words len > 1 (prefectures are usually long)
-                 valid_parts = [w for w in clean_val.split() if len(w) > 1]
-                 if valid_parts:
-                     data[key] = " ".join(valid_parts)
+                    valid_parts = [w for w in clean_val.split() if len(w) > 1]
+                    if valid_parts:
+                        data[key] = " ".join(valid_parts)
 
             elif key == 'passport_no':
                 m = re.search(r'([A-Z]{2}\s*\d{7})', combined_text)
