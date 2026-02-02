@@ -219,25 +219,16 @@ if config:
                     st.error(f"ファイルを開けませんでした: {e}")
                     image = None
                 
-                # Options
-                use_fax_mode = st.checkbox("低画質・FAXモード（文字強調・ノイズ除去）", value=False, help="FAXやコピーで文字がかすれている場合に有効です。")
+                # Options - Removed FAX mode as per request
+                # use_fax_mode = st.checkbox("低画質・FAXモード...", ...)
 
                 if image and st.button("OCR解析開始", key='btn_single_ocr'):
                     if not vision_client:
                         st.error("OCRエンジンの初期化に失敗しました。")
                     else:
                         with st.spinner("解析中..."):
-                            # Helper to prepare image content
-                            target_image = image
-                            if use_fax_mode:
-                                try:
-                                    target_image = ocr_utils.preprocess_image_for_ocr(image)
-                                    # st.image(target_image, caption="前処理後の画像(Preview)") # Debug
-                                except Exception as e:
-                                    st.warning(f"画像前処理に失敗しました（そのまま続行します）: {e}")
-                            
                             img_byte_arr = io.BytesIO()
-                            target_image.save(img_byte_arr, format='JPEG') # Convert to JPEG for Vision API
+                            image.save(img_byte_arr, format='JPEG') # Convert to JPEG for Vision API
                             content = img_byte_arr.getvalue()
                             
                             vision_image = vision.Image(content=content)
@@ -357,9 +348,9 @@ if config:
             
             uploaded_files = st.file_uploader("画像をドラッグ＆ドロップ (複数可)", type=['png', 'jpg', 'jpeg', 'heic', 'pdf'], accept_multiple_files=True, key='batch_uploader')
             
-            # Batch Settings
-            st.markdown("##### 設定")
-            batch_fax_mode = st.checkbox("全ファイルに低画質・FAXモードを適用", value=False, key='batch_fax_check')
+            # Batch Settings - Removed FAX mode
+            # st.markdown("##### 設定")
+            # batch_fax_mode = st.checkbox(...)
 
             if uploaded_files:
                 st.write(f"選択済みファイル: {len(uploaded_files)} 件")
@@ -396,15 +387,8 @@ if config:
                                     image = Image.open(file)
 
                                 # Vision API
-                                # Preprocess if needed
-                                target_image = image
-                                if batch_fax_mode:
-                                     try:
-                                         target_image = ocr_utils.preprocess_image_for_ocr(image)
-                                     except: pass
-                                
                                 img_byte_arr = io.BytesIO()
-                                target_image.save(img_byte_arr, format='JPEG')
+                                image.save(img_byte_arr, format='JPEG')
                                 content = img_byte_arr.getvalue()
                                 vision_image = vision.Image(content=content)
                                 response = vision_client.text_detection(image=vision_image)
