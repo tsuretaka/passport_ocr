@@ -491,9 +491,9 @@ if config:
 
             # --- 2. Data Cleaning Section (New) ---
             st.markdown("### 🧹 データ補正")
-            with st.expander("データのクレンジング（本籍の修正など）", expanded=False):
-                st.info("「本籍」列に含まれる余計な文字（Sex, of など）を除去し、都道府県名のみに統一します。")
-                if st.button("✨ 本籍データを一括補正する"):
+            with st.expander("データのクレンジング（本籍の修正、全角→半角変換など）", expanded=False):
+                st.info("「本籍」のノイズ除去に加え、全角英数字（例：ＫＡＮＡＴＡ）を半角（KANATA）に統一します。")
+                if st.button("✨ データを一括補正・正規化する"):
                     if not st.session_state['manage_df'].empty:
                         df_clean = st.session_state['manage_df'].copy()
                         
@@ -503,8 +503,18 @@ if config:
                         # Use direct module access ensuring we get the latest
                         import ocr_utils
                         
+                        # Use the new utility from ocr_utils if available, or define local
+                        if hasattr(ocr_utils, 'normalize_text'):
+                            norm_func = ocr_utils.normalize_text
+                        else:
+                            import unicodedata
+                            def norm_func(t): return unicodedata.normalize('NFKC', str(t)).strip() if t else t
+
                         def clean_domicile(val):
                             if not val or pd.isna(val): return val
+                            # First normalize full-width
+                            val = norm_func(val)
+                            
                             val_str = str(val).upper()
                             
                             # 1. Check against Prefecture List
@@ -516,10 +526,30 @@ if config:
                         
                         # Check diff
                         for index, row in df_clean.iterrows():
-                            original = row['本籍']
-                            cleaned = clean_domicile(original)
-                            if original != cleaned:
-                                df_clean.at[index, '本籍'] = cleaned
+                            # Fix Domicile
+                            orig_dom = row['本籍']
+                            cleaned_dom = clean_domicile(orig_dom)
+                            
+                            # Fix other text fields (Name, Passport No, etc) - Normalization only
+                            # List of columns to normalize
+                            target_cols = ["旅券番号", "氏名(姓)", "氏名(名)", "生年月日", "性別", "国籍", "発行年月日", "有効期間満了日"]
+                            
+                            row_changed = False
+                            
+                            if orig_dom != cleaned_dom:
+                                df_clean.at[index, '本籍'] = cleaned_dom
+                                row_changed = True
+                                
+                            for col in target_cols:
+                                if col in row:
+                                    orig_val = row[col]
+                                    if orig_val and not pd.isna(orig_val):
+                                        new_val = norm_func(orig_val)
+                                        if orig_val != new_val:
+                                            df_clean.at[index, col] = new_val
+                                            row_changed = True
+                            
+                            if row_changed:
                                 count_fixed += 1
                         
                         st.session_state['manage_df'] = df_clean

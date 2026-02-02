@@ -1,6 +1,6 @@
-import re
 from datetime import datetime
 from collections import defaultdict
+import unicodedata
 
 month_map = {
     "JAN": "01", "FEB": "02", "MAR": "03", "APR": "04", "MAY": "05", "JUN": "06",
@@ -82,19 +82,26 @@ def parse_response(response):
     
     # 3. Merge (VIZ usually has higher accuracy for visual fields, MRZ for raw structure)
     data = {
-        "passport_no": merge_val(mrz_data.get('passport_no'), viz_data.get('passport_no')),
-        "surname": merge_val(mrz_data.get('surname'), viz_data.get('surname')),
-        "given_name": merge_val(mrz_data.get('given_name'), viz_data.get('given_name')),
-        "birth_date": merge_val(mrz_data.get('birth_date'), viz_data.get('birth_date')),
-        "expiry_date": merge_val(mrz_data.get('expiry_date'), viz_data.get('expiry_date')),
-        "sex": merge_val(mrz_data.get('sex'), viz_data.get('sex')),
-        "nationality": merge_val(mrz_data.get('nationality'), viz_data.get('nationality'), default="JPN"),
-        "domicile": merge_val(mrz_data.get('domicile'), viz_data.get('domicile')), # Added Domicile
-        "issue_date": merge_val(mrz_data.get('issue_date'), viz_data.get('issue_date')), # Added Issue Date
+        "passport_no": normalize_text(merge_val(mrz_data.get('passport_no'), viz_data.get('passport_no'))),
+        "surname": normalize_text(merge_val(mrz_data.get('surname'), viz_data.get('surname'))),
+        "given_name": normalize_text(merge_val(mrz_data.get('given_name'), viz_data.get('given_name'))),
+        "birth_date": normalize_text(merge_val(mrz_data.get('birth_date'), viz_data.get('birth_date'))),
+        "expiry_date": normalize_text(merge_val(mrz_data.get('expiry_date'), viz_data.get('expiry_date'))),
+        "sex": normalize_text(merge_val(mrz_data.get('sex'), viz_data.get('sex'))),
+        "nationality": normalize_text(merge_val(mrz_data.get('nationality'), viz_data.get('nationality'), default="JPN")),
+        "domicile": normalize_text(merge_val(mrz_data.get('domicile'), viz_data.get('domicile'))), # Added Domicile
+        "issue_date": normalize_text(merge_val(mrz_data.get('issue_date'), viz_data.get('issue_date'))), # Added Issue Date
         "raw_mrz": mrz_data.get('raw_mrz', "")
     }
     
     return data
+
+def normalize_text(text):
+    if not text: return text
+    # NFKC normalization converts full-width chars (ＫＡＮＡＴＡ) to half-width (KANATA)
+    # Also strips whitespace
+    return unicodedata.normalize('NFKC', str(text)).strip()
+
 
 def merge_val(v1, v2, default=""):
     if not v1 and not v2: return default
