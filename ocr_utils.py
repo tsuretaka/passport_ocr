@@ -39,12 +39,17 @@ def preprocess_image_for_ocr(pil_image):
     dilated = cv2.dilate(blurred, kernel, iterations=1)
     
     # Optional: Contrast Enhancement (CLAHE)
-    # コントラストを強調して文字をよりくっきりさせる
     clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
     enhanced = clahe.apply(dilated)
+    
+    # 4. Adaptive Thresholding (Binarization) - NEW
+    # 照明ムラや汚れに強い適応的2値化を行い、完全に白黒にする
+    # Block Size: 11, C: 2 (調整パラメータ)
+    binary = cv2.adaptiveThreshold(enhanced, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, \
+                                   cv2.THRESH_BINARY, 11, 2)
 
     # Convert back to PIL
-    final_img = Image.fromarray(enhanced)
+    final_img = Image.fromarray(binary)
     return final_img
 
 
@@ -341,63 +346,140 @@ def parse_mrz_text(text):
         if len(clean) > 20: 
             candidates.append(clean)
             
+    # Identify MRZ lines
+    candidates = []
+    # Clean lines logic needs improvement.
+    # Replace common OCR misreadings for MRZ chars
+    for line in lines:
+        # replace common misreadings of <
+        clean = line.strip().upper().replace(' ', '')
+        # K, C, (, { -> <
+        clean = re.sub(r'[KC\(\){}\[\]]', '<', clean)
+        
+        if len(clean) > 10: 
+            candidates.append(clean)
+            
     line1 = line2 = None
-    for i, seq in enumerate(candidates):
-        # Line 1: P<JPN...
-        if seq.startswith('P') and '<' in seq:
-            # Score it? count <
-            if seq.count('<') >= 2:
-                # Look for Line 2
-                if i + 1 < len(candidates):
-                    seq2 = candidates[i+1]
-                    # Line 2 often starts with passport no (alphanum) and has digits
-                    # Check for digit density
-                    digit_count = sum(c.isdigit() for c in seq2)
-                    if digit_count > 5:
-                        line1, line2 = seq, seq2
-                        
-                        # MRZ Specific Correction (O vs 0)
-                        # Line 2: Passport No (char 0-9), DOB (13-19), Expiry (21-27) are usually Digits.
-                        # Force O -> 0 for date fields
-                        l2_chars = list(line2)
-                        
-                        # Fix Passport No (First 9 chars: often ambiguous, but usually Alphanumeric)
-                        # Fix Dates (DOB: 13-18, Expiry: 21-26, Personal No: 28-32??)
-                        # Indices are 0-based.
-                        # Date positions: 13,14, 15,16, 17,18 (DOB)
-                        #                 21,22, 23,24, 25,26 (Expiry)
-                        for idx in [13,14,15,16,17,18, 21,22,23,24,25,26]:
-                            if idx < len(l2_chars):
-                                if l2_chars[idx] == 'O': l2_chars[idx] = '0'
-                                if l2_chars[idx] == 'I': l2_chars[idx] = '1'
-                                if l2_chars[idx] == 'D': l2_chars[idx] = '0'
-                                if l2_chars[idx] == 'S': l2_chars[idx] = '5'
-                                if l2_chars[idx] == 'B': l2_chars[idx] = '8'
-                        
-                        line2 = "".join(l2_chars)
-                        break
     
+    # Strategy 1: Find Line 2 (Check Digit Rich) first, then look above it for Line 1
+    # Line 2 pattern: 9 chars (Passport No) + 1 digit + 3 chars (Country) + 6 digits (DOB) ...
+    # Simplified: Lots of digits in specific pos.
+    
+    for i, seq in enumerate(candidates):
+        # Heuristic for Line 2: At least 50% numbers? or specific length 44?
+        # Check if it looks like Line 2
+        digit_count = sum(c.isdigit() for c in seq)
+        # MRZ Line 2 normally has at least 20 digits.
+        # But allow lower for bad OCR (say 10)
+        
+        is_line2 = False
+        if len(seq) > 20 and digit_count >= 8:
+             # Check distinct structure?
+             # Just assume high digit density is Line 2
+             if digit_count / len(seq) > 0.4:
+                 is_line2 = True
+        
+        if is_line2:
+             curr_l2 = seq
+             # Try to find Line 1 above it (i-1)
+             if i > 0:
+                 prev_seq = candidates[i-1]
+                 # Valid Line 1 starts with P
+                 if prev_seq.startswith('P'):
+                     line1 = prev_seq
+                     line2 = curr_l2
+                     break
+                 # If prev line doesn't start with P, maybe OCR missed the P?
+                 # If it has many <, take it.
+                 elif prev_seq.count('<') >= 2:
+                     line1 = prev_seq
+                     line2 = curr_l2
+                     break
+    
+    # Strategy 2: Old approach (Find P<...) if Strategy 1 failed
+    if not line1 or not line2:
+        for i, seq in enumerate(candidates):
+            if seq.startswith('P') and '<' in seq:
+                 if seq.count('<') >= 2:
+                     if i + 1 < len(candidates):
+                         seq2 = candidates[i+1]
+                         if sum(c.isdigit() for c in seq2) > 5:
+                             line1, line2 = seq, seq2
+                             break
+                             
     if line1 and line2:
         data['raw_mrz'] = f"{line1}\n{line2}"
+        
+        # --- MRZ Line 2 Correction Logic ---
+        # Same correction as before
+        l2_chars = list(line2)
+        for idx in [13,14,15,16,17,18, 21,22,23,24,25,26]:
+             if idx < len(l2_chars):
+                 if l2_chars[idx] == 'O': l2_chars[idx] = '0'
+                 if l2_chars[idx] == 'I': l2_chars[idx] = '1'
+                 if l2_chars[idx] == 'D': l2_chars[idx] = '0'
+                 if l2_chars[idx] == 'S': l2_chars[idx] = '5'
+                 if l2_chars[idx] == 'B': l2_chars[idx] = '8'
+                 if l2_chars[idx] == 'Z': l2_chars[idx] = '2'
+        line2 = "".join(l2_chars)
+        # -----------------------------------
+
         try:
-            name_area = line1[5:]
-            if '<<' in name_area:
-                parts = name_area.split('<<')
-                data['surname'] = parts[0].replace('<', '').strip()
-                if len(parts) > 1: data['given_name'] = parts[1].replace('<', ' ').strip()
+            # Line 1 Parsing
+            # P<JPNSURNAME<<GIVEN<NAME<<<<
+            # Remove leading P or P<
+            if line1.startswith('P'):
+                 content = line1[1:]
+                 # Country code is next 3 chars? P<JPN
+                 # Usually P< or P< (1 char type)
+                 # We just want the name part.
+                 # Find first start of names.
+                 # Usually after 2 chars (type) + 3 chars (Country) = 5 chars
+                 # But sometimes Country is misread.
+                 # Let's split by '<<'
+                 
+                 parts = content.split('<<')
+                 # First part should contain Surname (and maybe country code at start)
+                 # P<JPNODO... or P<... -> split gives [ 'P<JPNODO', 'GIVEN', ... ]
+                 # Wait, '<<' separates Surname and Given name.
+                 
+                 # Robust approach: Find first '<<'
+                 parts = content.split('<<')
+                 surname_part = parts[0]
+                 
+                 # Strip Country Code (3 chars) if it looks like [A-Z]{3}
+                 # JPN is standard.
+                 # OCR might read P<JPN as P<JPN or PKJPN
+                 
+                 # Heuristic: Remove all '<' from surname_part
+                 clean_s = surname_part.replace('<', '')
+                 # Usually starts with type+country (P JPN) -> PJPN...
+                 # Remove first 4-5 chars? Risky.
+                 
+                 # Regex for Country Code?
+                 # If we see JPN, split there.
+                 if 'JPN' in clean_s:
+                      _, s_name = clean_s.split('JPN', 1)
+                      data['surname'] = s_name.strip()
+                 else:
+                      # Blind guess: First 5 chars are junk (P + Type + 3 letter country)
+                      if len(clean_s) > 5:
+                           data['surname'] = clean_s[5:]
+                      else:
+                           data['surname'] = clean_s # Fallback
+                           
+                 if len(parts) > 1:
+                     # Given name is the second part
+                     g_part = parts[1]
+                     data['given_name'] = g_part.replace('<', ' ').strip()
+                 
             else:
-                 # Fallback split
-                 parts = [p for p in name_area.split('<') if p]
-                 if parts:
-                     data['surname'] = parts[0]
-                     data['given_name'] = " ".join(parts[1:])
+                 pass # Weird line 1
         except: pass
         
         try:
             # Passport No extraction from Line 2
             # First 9 chars usually. 
-            # Sometimes OCR merges or adds noise.
-            # Regex for [A-Z0-9]{9}
             m = re.match(r'([A-Z0-9]{9})', line2)
             if m: data['passport_no'] = m.group(1).replace('<', '')
             
