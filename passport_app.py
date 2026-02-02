@@ -237,7 +237,22 @@ if config:
                             if response.error.message:
                                 st.error(f"Error: {response.error.message}")
                             else:
+                            else:
                                 passport_data = ocr_utils.parse_response(response)
+                                
+                                # FORCE NORMALIZE LOCALLY (To fix K A N A T A issue)
+                                import unicodedata
+                                import re
+                                def local_normalize(val):
+                                    if not val: return val
+                                    # NFKC + Remove Spaces
+                                    s = unicodedata.normalize('NFKC', str(val))
+                                    return re.sub(r'\s+', '', s)
+                                
+                                for k, v in passport_data.items():
+                                    if isinstance(v, str):
+                                        passport_data[k] = local_normalize(v)
+                                
                                 st.session_state['current_mrz_data'] = passport_data
                                 st.success("解析完了")
                                 
@@ -395,6 +410,18 @@ if config:
                                 
                                 # Parse
                                 p_data = ocr_utils.parse_response(response)
+                                
+                                # FORCE NORMALIZE LOCALLY
+                                import unicodedata
+                                import re
+                                def local_normalize(val):
+                                    if not val: return val
+                                    s = unicodedata.normalize('NFKC', str(val))
+                                    return re.sub(r'\s+', '', s)
+
+                                for k, v in p_data.items():
+                                    if isinstance(v, str):
+                                        p_data[k] = local_normalize(v)
                                 
                                 # Create Row Data
                                 row = {
