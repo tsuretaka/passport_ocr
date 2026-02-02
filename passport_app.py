@@ -662,7 +662,8 @@ if config:
                     data_return_mode=DataReturnMode.FILTERED_AND_SORTED, 
                     update_mode=GridUpdateMode.MODEL_CHANGED,
                     fit_columns_on_grid_load=False,
-                    allow_unsafe_jscode=True # Needed for some advanced features if used
+                    allow_unsafe_jscode=True, # Needed for some advanced features if used
+                    key='passport_grid' # FIX: Add key to persist state across reruns
                 )
 
                 selected = grid_response['selected_rows']
