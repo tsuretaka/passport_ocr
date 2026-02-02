@@ -1,3 +1,4 @@
+import re
 from datetime import datetime
 from collections import defaultdict
 import unicodedata
