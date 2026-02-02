@@ -82,7 +82,13 @@ def parse_response(response):
     viz_data = parse_viz_layout(annotations, full_text=full_text)
     
     # 3. Merge (VIZ usually has higher accuracy for visual fields, MRZ for raw structure)
+    # 3. Merge Strategies
+    # MRZ is extremely reliable for core fields (No, Names, Dates).
+    # VIZ is only reliable for fields NOT in MRZ (Domicile) or as fallback.
+    # We change strategy to Prefer MRZ for core fields.
+    
     data = {
+        # Prefer MRZ
         "passport_no": normalize_text(merge_val(mrz_data.get('passport_no'), viz_data.get('passport_no'))),
         "surname": normalize_text(merge_val(mrz_data.get('surname'), viz_data.get('surname'))),
         "given_name": normalize_text(merge_val(mrz_data.get('given_name'), viz_data.get('given_name'))),
@@ -90,8 +96,11 @@ def parse_response(response):
         "expiry_date": normalize_text(merge_val(mrz_data.get('expiry_date'), viz_data.get('expiry_date'))),
         "sex": normalize_text(merge_val(mrz_data.get('sex'), viz_data.get('sex'))),
         "nationality": normalize_text(merge_val(mrz_data.get('nationality'), viz_data.get('nationality'), default="JPN")),
-        "domicile": normalize_text(merge_val(mrz_data.get('domicile'), viz_data.get('domicile'))), # Added Domicile
         "issue_date": normalize_text(merge_val(mrz_data.get('issue_date'), viz_data.get('issue_date'))), # Added Issue Date
+        
+        # Prefer VIZ (or VIZ only)
+        "domicile": normalize_text(merge_val(viz_data.get('domicile'), mrz_data.get('domicile'))), # Domicile is VIZ heavy
+        
         "raw_mrz": mrz_data.get('raw_mrz', "")
     }
     
@@ -107,11 +116,14 @@ def normalize_text(text):
     return normalized.replace(' ', '')
 
 
-def merge_val(v1, v2, default=""):
-    if not v1 and not v2: return default
-    if v1 and not v2: return v1
-    if not v1 and v2: return v2
-    return v2
+def merge_val(primary, secondary, default=""):
+    """
+    Merge values preferring 'primary' if available.
+    If 'primary' is empty, use 'secondary'.
+    """
+    if primary: return primary
+    if secondary: return secondary
+    return default
 
 # ----------------------------------------------------------------------------
 # Layout Based Parsing (VIZ)
