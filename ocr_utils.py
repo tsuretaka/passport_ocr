@@ -7,6 +7,44 @@ month_map = {
     "JUL": "07", "AUG": "08", "SEP": "09", "OCT": "10", "NOV": "11", "DEC": "12"
 }
 
+# Image Preprocessing
+import cv2
+import numpy as np
+from PIL import Image
+
+def preprocess_image_for_ocr(pil_image):
+    """
+    低画質・FAX画像向けの前処理を行う。
+    1. グレースケール化
+    2. 平滑化 (ノイズ除去)
+    3. 膨張処理 (かすれた文字を繋げる)
+    Returns: Processed PIL Image (JPEG bytes are handled by caller typically, but here we return PIL)
+    """
+    # Convert PIL to OpenCV (BGR)
+    img = np.array(pil_image)
+    if img.shape[2] == 4: # RGBA -> RGB
+         img = cv2.cvtColor(img, cv2.COLOR_RGBA2RGB)
+    
+    # 1. Grayscale
+    gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
+    
+    # 2. Gaussian Blur (Reduce dot noise)
+    # カーネルサイズ (3,3) 程度で軽くぼかす
+    blurred = cv2.GaussianBlur(gray, (3, 3), 0)
+    
+    # 3. Dilation (Thicken text)
+    # 文字が途切れている場合に有効。カーネルサイズは小さめに。
+    kernel = np.ones((2, 2), np.uint8)
+    dilated = cv2.dilate(blurred, kernel, iterations=1)
+    
+    # Optional: Thresholding (Make it strict B&W)
+    # _, thresh = cv2.threshold(dilated, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    
+    # Convert back to PIL
+    final_img = Image.fromarray(dilated)
+    return final_img
+
+
 # 日本の都道府県リスト（ローマ字・ヘボン式）
 JAPAN_PREFECTURES = {
     "HOKKAIDO", "AOMORI", "IWATE", "MIYAGI", "AKITA", "YAMAGATA", "FUKUSHIMA",

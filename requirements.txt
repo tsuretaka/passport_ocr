@@ -10,3 +10,5 @@ bcrypt
 pillow-heif
 XlsxWriter
 pdf2image
+opencv-python-headless
+numpy
