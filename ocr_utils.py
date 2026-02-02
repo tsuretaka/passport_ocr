@@ -364,8 +364,8 @@ def parse_mrz_text(text):
     for line in lines:
         # replace common misreadings of <
         clean = line.strip().upper().replace(' ', '')
-        # K, C, (, { -> <
-        clean = re.sub(r'[KC\(\){}\[\]]', '<', clean)
+        # (, ), {, }, [, ] -> < (Removed K and C as they are valid chars)
+        clean = re.sub(r'[\(\){}\[\]]', '<', clean)
         
         if len(clean) > 10: 
             candidates.append(clean)
