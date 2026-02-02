@@ -32,16 +32,19 @@ def preprocess_image_for_ocr(pil_image):
     # カーネルサイズ (3,3) 程度で軽くぼかす
     blurred = cv2.GaussianBlur(gray, (3, 3), 0)
     
+    
     # 3. Dilation (Thicken text)
     # 文字が途切れている場合に有効。カーネルサイズは小さめに。
     kernel = np.ones((2, 2), np.uint8)
     dilated = cv2.dilate(blurred, kernel, iterations=1)
     
-    # Optional: Thresholding (Make it strict B&W)
-    # _, thresh = cv2.threshold(dilated, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-    
+    # Optional: Contrast Enhancement (CLAHE)
+    # コントラストを強調して文字をよりくっきりさせる
+    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
+    enhanced = clahe.apply(dilated)
+
     # Convert back to PIL
-    final_img = Image.fromarray(dilated)
+    final_img = Image.fromarray(enhanced)
     return final_img
 
 
@@ -352,6 +355,26 @@ def parse_mrz_text(text):
                     digit_count = sum(c.isdigit() for c in seq2)
                     if digit_count > 5:
                         line1, line2 = seq, seq2
+                        
+                        # MRZ Specific Correction (O vs 0)
+                        # Line 2: Passport No (char 0-9), DOB (13-19), Expiry (21-27) are usually Digits.
+                        # Force O -> 0 for date fields
+                        l2_chars = list(line2)
+                        
+                        # Fix Passport No (First 9 chars: often ambiguous, but usually Alphanumeric)
+                        # Fix Dates (DOB: 13-18, Expiry: 21-26, Personal No: 28-32??)
+                        # Indices are 0-based.
+                        # Date positions: 13,14, 15,16, 17,18 (DOB)
+                        #                 21,22, 23,24, 25,26 (Expiry)
+                        for idx in [13,14,15,16,17,18, 21,22,23,24,25,26]:
+                            if idx < len(l2_chars):
+                                if l2_chars[idx] == 'O': l2_chars[idx] = '0'
+                                if l2_chars[idx] == 'I': l2_chars[idx] = '1'
+                                if l2_chars[idx] == 'D': l2_chars[idx] = '0'
+                                if l2_chars[idx] == 'S': l2_chars[idx] = '5'
+                                if l2_chars[idx] == 'B': l2_chars[idx] = '8'
+                        
+                        line2 = "".join(l2_chars)
                         break
     
     if line1 and line2:
