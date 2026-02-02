@@ -724,12 +724,24 @@ if config:
                     
                     # 2. Content Check (if order is same, maybe values changed)
                     if not has_changed:
-                        # Drop compare artifacts
-                        c1 = df_current_reset.drop(columns=['削除対象'], errors='ignore')
-                        c2 = clean_new_df.drop(columns=['削除対象'], errors='ignore')
-                        # Align columns
-                        c2 = c2[c1.columns] 
-                        if not c1.equals(c2):
+                        try:
+                            # Drop compare artifacts
+                            c1 = df_current_reset.drop(columns=['削除対象'], errors='ignore')
+                            c2 = clean_new_df.drop(columns=['削除対象'], errors='ignore')
+                            
+                            # Align columns safely using intersection
+                            common_cols = [c for c in c1.columns if c in c2.columns]
+                            
+                            # If columns differ significantly, we should probably update
+                            if len(common_cols) != len(c1.columns) or len(common_cols) != len(c2.columns):
+                                has_changed = True
+                            else:
+                                # Compare content of common columns
+                                if not c1[common_cols].equals(c2[common_cols]):
+                                    has_changed = True
+                        except Exception as e:
+                            # If comparison fails, assume changed to be safe and avoid crash
+                            # st.error(f"Debug: Compare error {e}")
                             has_changed = True
 
                     if has_changed:
