@@ -654,21 +654,37 @@ if config:
 
                 st.markdown("💡 ヒント: 行をドラッグして並び替えることができます。削除したい行はチェックボックスで選択してください。")
 
+                # Ensure we capture ANY change including row movement if possible (Row Dragging is tricky in Streamlit-AgGrid)
+                # But 'MODEL_CHANGED' should cover it. We will try to monitor selection too just in case.
+                
                 grid_response = AgGrid(
                     df_current,
                     gridOptions=gridOptions,
                     height=grid_height, 
                     width='100%',
                     data_return_mode=DataReturnMode.FILTERED_AND_SORTED, 
-                    update_mode=GridUpdateMode.MODEL_CHANGED,
+                    update_mode=GridUpdateMode.MODEL_CHANGED | GridUpdateMode.VALUE_CHANGED | GridUpdateMode.SELECTION_CHANGED,
                     fit_columns_on_grid_load=False,
-                    allow_unsafe_jscode=True, # Needed for some advanced features if used
-                    key='passport_grid' # FIX: Add key to persist state across reruns
+                    allow_unsafe_jscode=True, 
+                    key='passport_grid' 
                 )
 
                 selected = grid_response['selected_rows']
-                updated_df_from_grid = grid_response['data']
-                
+                updated_df_from_grid = grid_response['data'] # This should be a DataFrame or List of Dicts
+
+                # Debug: Show top 3 names from the GRID response (not session state yet)
+                # This helps user confirm if the drag was recognized by Python
+                if isinstance(updated_df_from_grid, pd.DataFrame) and not updated_df_from_grid.empty:
+                    top_names_preview = [f"{r.get('氏名(姓)','')} {r.get('氏名(名)','')}" for i, r in updated_df_from_grid.head(3).iterrows()]
+                elif isinstance(updated_df_from_grid, list) and updated_df_from_grid:
+                     top_names_preview = [f"{r.get('氏名(姓)','')} {r.get('氏名(名)','')}" for r in updated_df_from_grid[:3]]
+                else:
+                    top_names_preview = []
+
+                # Convert List to DF if needed
+                if not isinstance(updated_df_from_grid, pd.DataFrame):
+                    updated_df_from_grid = pd.DataFrame(updated_df_from_grid)
+
                 # Check if data changed (reorder or edit)
                 # To avoid infinite loops, we can use a button to "Commit" changes if needed.
                 # Or simply update session state if explicitly requested.
@@ -678,6 +694,7 @@ if config:
                 
                 with col_btn1:
                     if st.button("🗑️ 選択行を削除"):
+                         # ... (Delete logic same as before)
                         if selected:
                             # Convert selected to dataframe or list of IDs
                             # Since we don't have a unique ID guaranteed, we might rely on index or content.
@@ -727,7 +744,7 @@ if config:
                 with col_btn2:
                     if st.button("💾 並び替え・編集を保存"):
                         # Save the current state of AgGrid to Session State
-                        new_df = pd.DataFrame(updated_df_from_grid)
+                        new_df = updated_df_from_grid.copy()
                         
                         # Clean up: Drop potential internal AgGrid columns or Index columns if they became regular columns
                         # And ensure we reset index to respect the new order absolutely
@@ -742,12 +759,15 @@ if config:
                         # Show confirmation of Top 1
                         if not new_df.empty:
                             top_name = f"{new_df.iloc[0].get('氏名(姓)','')} {new_df.iloc[0].get('氏名(名)','')}"
-                            st.success(f"保存しました！現在の先頭: {top_name}")
+                            st.success(f"保存しました！\n現在の先頭データ: {top_name}")
                         else:
                             st.success("保存しました（データ空）")
                             
                         st.rerun()
                 
+                # Show current order preview (helpful for debugging)
+                st.caption(f"現在のシステム認識順序（Save前）: {', '.join(top_names_preview)} ...")
+
                 st.markdown("### データ出力")
                 # Excel Download
                 buffer = io.BytesIO()
