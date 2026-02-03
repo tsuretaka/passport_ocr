@@ -652,10 +652,11 @@ if config:
                 gb.configure_grid_options(rowDragManaged=True, animateRows=True)
                 gridOptions = gb.build()
 
-                st.warning("⚠️ 重要: 行をドラッグして並び替えた後は、**必ず任意の行を1回クリック（またはチェックボックスをON/OFF）** してください。\nこれを行わないと、新しい並び順がシステムに認識されません（仕様上の制限です）。\n下の「現在のシステム認識順序」が変わったことを確認してから保存してください。")
+                # Dynamic Key for AgGrid to force reset on Save
+                if 'aggrid_key' not in st.session_state:
+                    st.session_state['aggrid_key'] = 'passport_grid_init'
 
-                # Ensure we capture ANY change including row movement if possible (Row Dragging is tricky in Streamlit-AgGrid)
-                # But 'MODEL_CHANGED' should cover it. We will try to monitor selection too just in case.
+                st.warning("⚠️ 重要: 行をドラッグして並び替えた後は、**必ず任意の行を1回クリック（またはチェックボックスをON/OFF）** してください。\nこれを行わないと、新しい並び順がシステムに認識されません（仕様上の制限です）。\n下の「現在のシステム認識順序」が変わったことを確認してから保存してください。")
                 
                 grid_response = AgGrid(
                     df_current,
@@ -666,7 +667,7 @@ if config:
                     update_mode=GridUpdateMode.MODEL_CHANGED | GridUpdateMode.VALUE_CHANGED | GridUpdateMode.SELECTION_CHANGED,
                     fit_columns_on_grid_load=False,
                     allow_unsafe_jscode=True, 
-                    key='passport_grid' 
+                    key=st.session_state['aggrid_key'] 
                 )
 
                 selected = grid_response['selected_rows']
@@ -735,6 +736,9 @@ if config:
                         new_df = new_df.reset_index(drop=True)
                         
                         st.session_state['manage_df'] = new_df
+                        
+                        # Update Grid Key to force full Refresh/Reset of selection state
+                        st.session_state['aggrid_key'] = f"passport_grid_{datetime.now().strftime('%H%M%S')}"
                         
                         # Show confirmation of Top 1
                         if not new_df.empty:
