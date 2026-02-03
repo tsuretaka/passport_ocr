@@ -749,8 +749,27 @@ if config:
                             
                         st.rerun()
 
-                # Show current order preview
-                st.caption(f"現在のデータ順序: {', '.join(top_names_preview)} ...")
+                # Show full order preview in expander
+                # Verify order across all rows, fitting user request
+                with st.expander("👀 現在の並び順を全件確認する（保存前に確認）"):
+                    if isinstance(updated_df_from_grid, pd.DataFrame) and not updated_df_from_grid.empty:
+                        # Extract minimal info for verification
+                        preview_cols = []
+                        for c in ['氏名(姓)', '氏名(名)', '旅券番号']:
+                            if c in updated_df_from_grid.columns:
+                                preview_cols.append(c)
+                        
+                        if preview_cols:
+                            preview_df = updated_df_from_grid[preview_cols].copy()
+                            preview_df.reset_index(drop=True, inplace=True)
+                            preview_df.index += 1 # 1-based index for easy reading
+                            st.dataframe(preview_df, use_container_width=True, height=300)
+                        else:
+                            st.write("プレビュー可能な列がありません")
+                    elif isinstance(updated_df_from_grid, list) and updated_df_from_grid:
+                         st.write(updated_df_from_grid)
+                    else:
+                        st.info("データがありません")
 
                 st.markdown("### データ出力")
                 # Excel Download
