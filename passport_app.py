@@ -636,29 +636,86 @@ if config:
                 from st_aggrid import AgGrid, GridOptionsBuilder
 
                 gb = GridOptionsBuilder.from_dataframe(df_current)
+                
+                # FIX: Add JavaScript to force update on Drag End
+                # We add a dummy 'SortIndex' column if not present to detect changes
+                # But actually, updating ANY column works. Let's update an invisible column.
+                
+                # Define JS to update row index on drag end, forcing a VALUE_CHANGED event
+                onRowDragEnd = JsCode("""
+                function(e) {
+                    // Update the grid to force a change detection
+                    var api = e.api;
+                    var rowCount = api.getDisplayedRowCount();
+                    
+                    // Loop through rows and update a hidden field or just refresh
+                    // Better technique: Force refresh of the grid which might trigger update
+                    api.refreshCells();
+                    
+                    // Even stronger: We rely on the fact that if we use onRowDragEnd, 
+                    // we might need to notify Streamlit. 
+                    // Currently st-aggrid doesn't have a direct 'notify' js method exposed easily.
+                    
+                    // Fallback: The user just wanted to NOT click checkboxes.
+                    // If we can't fully auto-sync via JS without complex hacks,
+                    // We will try the button approach combined with a clearer UI.
+                    // BUT, let's try to add a JS that simulates a selection change or something.
+                }
+                """)
+                # Actually, simply enabling rowDragManaged is enough for visual, but not for data sync.
+                # The reliable way requested by user is "Button Press" to work.
+                # If "Button Press" (Rerun) is performed, AgGrid re-renders.
+                # We need AgGrid to dump its CURRENT state on re-render, not the OLD prop state.
+                # This is controlled by `reload_data` logic usually, but here...
+                
+                # Let's try `gb.configure_grid_options(onRowDragEnd=...)` is risky if JS fails.
+                
+                # Alternative Plan requested by User:
+                # "ドラッグ後に【並び替えを一時反映】ボタン押下だけで実際に動く挙動にできませんか？"
+                # To make the BUTTON work, AgGrid must be willing to output the dragged state on re-initialization (or update).
+                # But AgGrid only outputs on Event. 
+                
+                # Crucial Fix:
+                # We will inject JS that programmatically selects the dragged row (or deselects/selects) 
+                # momentarily to trigger SELECTION_CHANGED.
+                
+                js_on_drag_stop = JsCode("""
+                function(e) {
+                    console.log("Drag Ended");
+                    // Force a selection event to sync data
+                    var node = e.node;
+                    node.setSelected(true);
+                    node.setSelected(false);
+                    // This toggling should trigger onSelectionChanged -> Streamlit Sync
+                }
+                """)
+                
+                gb.configure_grid_options(
+                    rowDragManaged=True, 
+                    animateRows=True,
+                    onRowDragEnd=js_on_drag_stop # Inject JS Trigger
+                )
+                
                 # Enable selection
-                # FIX: Add rowMultiSelectWithClick=True so clicking anywhere on the row triggers update
                 gb.configure_selection('multiple', use_checkbox=True, groupSelectsChildren=True, rowMultiSelectWithClick=True)
                 # Enable editing
                 gb.configure_default_column(editable=True, groupable=True)
-                # Enable Row Dragging on the first column (or specific column)
+                # Enable Row Dragging
                 gb.configure_column("旅券番号", rowDrag=True)
                 
                 # Dynamic height based on rows
                 grid_height = 400
                 if len(df_current) > 10: grid_height = 600
                 
-                gb.configure_grid_options(rowDragManaged=True, animateRows=True)
                 gridOptions = gb.build()
 
                 # Dynamic Key for AgGrid to force reset on Save
                 if 'aggrid_key' not in st.session_state:
                     st.session_state['aggrid_key'] = 'passport_grid_init'
 
-                st.info("ℹ️ 操作ガイド: 行をドラッグして並び替えた後、**『🔄 並び順を一時反映』ボタンを押す** か、**任意の行をクリック** してください。これによりシステムが新しい順序を認識します。")
+                st.info("ℹ️ 操作ガイド: 行をドラッグして指を離すと、自動的にシステムに同期されます（一瞬読み込みが走ります）。\nもし反応がない場合は、ボタンを押すか行をクリックしてください。")
                 
-                # Button to trigger rerun manually (User request)
-                if st.button("🔄 並び順を一時反映（ドラッグ後に押してください）"):
+                if st.button("🔄 並び順を強制更新"):
                     st.rerun()
                 
                 grid_response = AgGrid(
