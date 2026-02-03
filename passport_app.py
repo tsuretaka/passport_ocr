@@ -637,12 +637,11 @@ if config:
 
                 gb = GridOptionsBuilder.from_dataframe(df_current)
                 # Enable selection
-                gb.configure_selection('multiple', use_checkbox=True, groupSelectsChildren=True)
+                # FIX: Add rowMultiSelectWithClick=True so clicking anywhere on the row triggers update
+                gb.configure_selection('multiple', use_checkbox=True, groupSelectsChildren=True, rowMultiSelectWithClick=True)
                 # Enable editing
                 gb.configure_default_column(editable=True, groupable=True)
                 # Enable Row Dragging on the first column (or specific column)
-                # We add drag handle to '旅券番号' or create an index col
-                # Let's add drag handle to "旅券番号"
                 gb.configure_column("旅券番号", rowDrag=True)
                 
                 # Dynamic height based on rows
@@ -656,7 +655,11 @@ if config:
                 if 'aggrid_key' not in st.session_state:
                     st.session_state['aggrid_key'] = 'passport_grid_init'
 
-                st.warning("⚠️ 重要: 行をドラッグして並び替えた後は、**必ず任意の行を1回クリック（またはチェックボックスをON/OFF）** してください。\nこれを行わないと、新しい並び順がシステムに認識されません（仕様上の制限です）。\n下の「現在のシステム認識順序」が変わったことを確認してから保存してください。")
+                st.info("ℹ️ 操作ガイド: 行をドラッグして並び替えた後、**『🔄 並び順を一時反映』ボタンを押す** か、**任意の行をクリック** してください。これによりシステムが新しい順序を認識します。")
+                
+                # Button to trigger rerun manually (User request)
+                if st.button("🔄 並び順を一時反映（ドラッグ後に押してください）"):
+                    st.rerun()
                 
                 grid_response = AgGrid(
                     df_current,
