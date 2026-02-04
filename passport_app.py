@@ -731,6 +731,12 @@ if config:
                 )
 
                 selected = grid_response['selected_rows']
+                # Normalize 'selected' to list of dicts to prevent ValueError if it's a DataFrame
+                if isinstance(selected, pd.DataFrame):
+                    selected = selected.to_dict('records')
+                elif selected is None:
+                    selected = []
+                
                 updated_df_from_grid = grid_response['data'] # This should be a DataFrame or List of Dicts
 
                 # Debug: Show top 3 names from the GRID response (not session state yet)
